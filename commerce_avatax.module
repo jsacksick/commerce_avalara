@@ -1118,3 +1118,21 @@ function commerce_avatax_get_customer_profile_field() {
 
   return FALSE;
 }
+
+/**
+ * Implements hook_commerce_cart_order_empty().
+ */
+function commerce_avatax_commerce_cart_order_empty($order) {
+  // Clean-up task to remove avatax line items when cart is emptied.
+  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
+  $line_items_to_delete = array();
+  foreach ($order_wrapper->commerce_line_items as $delta => $line_item_wrapper) {
+    if ($line_item_wrapper->getBundle() == 'avatax') {
+      $line_items_to_delete[] = $line_item_wrapper->getIdentifier();
+      $order_wrapper->commerce_line_items->offsetUnset($delta);
+    }
+  }
+
+  // Delete line items.
+  commerce_line_item_delete_multiple($line_items_to_delete);
+}
