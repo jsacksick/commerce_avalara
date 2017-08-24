@@ -20,15 +20,6 @@
  */
 class Avatax {
 
-  // Defines the test API url of the REST API V2.
-  const BASE_DEV_URL_V2 = 'https://sandbox-rest.avatax.com/api/v2/';
-
-  // Defines the production API url of the REST API V2.
-  const BASE_URL_V2 = 'https://rest.avatax.com/api/v2/';
-
-  // Defines the base URL of the API.
-  protected $baseUrl;
-
   // Define properties for storing API credentials.
   protected $apiKey;
 
@@ -61,27 +52,15 @@ class Avatax {
     $this->apiKey = $apiKey;
     $this->apiMode = $apiMode;
     $this->logger = $logger;
-    $this->setBaseUrl();
     $this->headers = array_merge($headers, array(
-      'Authorization: Basic ' . $apiKey,
-      'Content-Type: application/json',
-      'x-Avalara-UID: a0o33000003waOC',
+      'Authorization' => 'Basic ' . $apiKey,
+      'Content-Type' => 'application/json',
+      'x-Avalara-UID' => 'a0o33000003waOC',
     ));
 
     // Initialize the cURL handle.
     $this->ch = curl_init();
     $this->setDefaultCurlOptions();
-  }
-
-  /**
-   * Returns the base URL for the API.
-   *
-   * @return string
-   *   The base URL for the API that query parameters will be appended to when
-   *   submitting API requests.
-   */
-  public function baseUrl() {
-    return $this->baseUrl;
   }
 
   /**
@@ -95,23 +74,27 @@ class Avatax {
   }
 
   /**
-   * Sets the API base url.
+   * Gets the API mode.
    *
    * @return string
-   *   The base URL for the API that query parameters will be appended to when
-   *   submitting API requests.
+   *   The API mode (dev|prod).
    */
-  public function setBaseUrl($baseUrl = '') {
-    if ($baseUrl) {
-      $this->baseUrl = $baseUrl;
+  public function getApiMode() {
+    return $this->apiMode;
+  }
+
+  /**
+   * Gets the API url.
+   *
+   * @return string
+   *   The API url.
+   */
+  public function getApiUrl() {
+    if ($this->getApiMode() == 'dev') {
+      return 'https://sandbox-rest.avatax.com/api/v2/';
     }
     else {
-      if ($this->apiMode == 'dev') {
-        $this->baseUrl = self::BASE_DEV_URL_V2;
-      }
-      else {
-        $this->baseUrl = self::BASE_URL_V2;
-      }
+      return 'https://rest.avatax.com/api/v2/';
     }
   }
 
@@ -213,8 +196,14 @@ class Avatax {
    * Sets the default cURL options.
    */
   public function setDefaultCurlOptions() {
+    $headers = array();
+
+    foreach ($this->httpHeaders() as $key => $value) {
+      $headers[] = "$key: $value";
+    }
+
     curl_setopt($this->ch, CURLOPT_HEADER, FALSE);
-    curl_setopt($this->ch, CURLOPT_HTTPHEADER, $this->httpHeaders());
+    curl_setopt($this->ch, CURLOPT_HTTPHEADER, $headers);
     curl_setopt($this->ch, CURLOPT_RETURNTRANSFER, TRUE);
     curl_setopt($this->ch, CURLOPT_SSL_VERIFYPEER, TRUE);
     curl_setopt($this->ch, CURLOPT_VERBOSE, FALSE);
@@ -267,9 +256,10 @@ class Avatax {
    */
   protected function doRequest($method, $path, array $fields = array()) {
     $return = array();
-    $url = $this->baseUrl() . $path;
+    $url = $this->getApiUrl() . $path;
     // Set the request URL and method.
     curl_setopt($this->ch, CURLOPT_URL, $url);
+    curl_setopt($this->ch, CURLINFO_HEADER_OUT, TRUE);
     curl_setopt($this->ch, CURLOPT_CUSTOMREQUEST, $method);
     if (!empty($fields)) {
       // JSON encode the fields and set them to the request body.
@@ -284,7 +274,7 @@ class Avatax {
     // Log information about the request.
     $this->logMessage('Request info: !url !headers !response !meta', array(
       '!url' => "<pre>URL : $method $url</pre>",
-      '!headers' => "<pre>Request Headers:\n" . var_export(curl_getinfo($this->ch, CURLOPT_HTTPHEADER), TRUE) . '</pre>',
+      '!headers' => "<pre>Request Headers:\n" . var_export(curl_getinfo($this->ch, CURLINFO_HEADER_OUT), TRUE) . '</pre>',
       '!response' => "<pre>Response:\n" . var_export($result, TRUE) . '</pre>',
       '!meta' => "<pre>Response Meta:\n" . var_export(curl_getinfo($this->ch), TRUE) . '</pre>',
     ));
