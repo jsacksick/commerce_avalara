@@ -280,8 +280,6 @@ class Avatax {
     ));
 
     if (!$success) {
-      $result = 'Error ' . $response_code;
-
       // Return the error message if it exists.
       if (!empty($result)) {
         $decoded_result = json_decode($result, TRUE);
@@ -291,6 +289,7 @@ class Avatax {
           $return['error'] = $decoded_result['error'];
         }
       }
+      $result = 'Error ' . $response_code;
     }
     elseif ($success && !empty($result)) {
       $result = json_decode($result, TRUE);

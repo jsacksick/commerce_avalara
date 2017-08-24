@@ -505,12 +505,24 @@ function commerce_avatax_order_admin_calculate_tax_form_submit($form, &$form_sta
     drupal_set_message(t('Taxes have been applied and the order updated.'));
   }
   else {
-    $error = t('Unknown error');
+    $error = t('Unknown error.');
+
     // Display a detailed error message if available.
-    if (!empty($response['error']) && isset($response['error']['message'])) {
-      $error = $response['error']['message'];
+    if (!empty($response['error'])) {
+      $error = '';
+
+      if (!empty($response['error']['message'])) {
+        $error .= filter_xss_admin($response['error']['message']) . ' ';
+      }
+      if (!empty($response['error']['details'])) {
+        foreach ($response['error']['details'] as $detail) {
+          if (!empty($detail['message'])) {
+            $error .= filter_xss_admin("{$detail['code']} ({$detail['number']}): {$detail['message']}");
+          }
+        }
+      }
     }
-    drupal_set_message(t('The taxes could not be calculated for this order (@error)', array('@error' => $error)), 'error');
+    drupal_set_message(t('The taxes could not be calculated for this order (!error)', array('!error' => $error)), 'error');
   }
 
   // Save the order once here if it has changed.
