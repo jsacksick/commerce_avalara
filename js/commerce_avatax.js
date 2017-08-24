@@ -80,9 +80,8 @@
 
   Drupal.behaviors.commerceAvaTax = {
     attach: function(context, settings) {
-      // Catch the submit, click our custom "Validate address" button.
-      $(checkoutFormSelector).submit(function(event) {
-        if (!$(this).hasClass('avatax-processed')) {
+      $('body').delegate(continueButtonsSelector, 'click', function(event) {
+        if (!$(checkoutFormSelector).hasClass('avatax-processed')) {
           $('#commerce-avatax-address-validate-btn').trigger('mousedown');
           event.preventDefault();
           return false;

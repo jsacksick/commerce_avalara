@@ -686,11 +686,21 @@ function commerce_avatax_form_alter(&$form, &$form_state, $form_id) {
       // profiles from which to pick that are of the same bundle.
       if (substr($pane_id, 0, 16) == 'customer_profile' && isset($form[$pane_id])) {
         $customer_profile_pane_found = TRUE;
-        break;
+
+        // HACK: We need to add a custom element validate handler if the profile
+        // copy checkbox is present.
+        // The profile copy element validate code will check if the triggering
+        // element is the "continue" button.
+        // However, in case the address validation button is present, it would
+        // be the triggering element making the profile copy validation to fail.
+        if (isset($form[$pane_id]['commerce_customer_profile_copy'])) {
+          array_unshift($form[$pane_id]['commerce_customer_profile_copy']['#element_validate'], 'commerce_avatax_profile_copy_validate');
+          break;
+        }
       }
     }
 
-    // If there are customer prfoiles pane on that page, we need to perform
+    // If there are customer profiles pane on that page, we need to perform
     // Address validation.
     if ($customer_profile_pane_found) {
       $form['#attached']['library'][] = array('system', 'ui.dialog');
@@ -726,6 +736,19 @@ function commerce_avatax_form_alter(&$form, &$form_state, $form_id) {
         '#type' => 'hidden',
       );
     }
+  }
+}
+
+/**
+ * Element validate callback for the profile copy checkbox.
+ */
+function commerce_avatax_profile_copy_validate($element, &$form_state, $form) {
+  $triggering_element = end($form_state['triggering_element']['#array_parents']);
+  // HACK: Fool the profile copy checkbox by making it believe the checkout
+  // continue button was clicked.
+  if ($triggering_element == 'validate-address') {
+    array_pop($form_state['triggering_element']['#array_parents']);
+    $form_state['triggering_element']['#array_parents'][] = 'continue';
   }
 }
 
