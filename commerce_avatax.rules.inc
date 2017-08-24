@@ -15,16 +15,18 @@ function commerce_avatax_rules_action_info() {
       'label' => t('Commerce Order'),
     ),
   );
-  $actions = array(
+  return array(
     'commerce_avatax_calculate_tax' => array(
       'label' => t('Calculate sales tax for an order'),
       'group' => t('Commerce Avatax'),
       'parameter' => $parameter,
+      'wrapped' => TRUE,
     ),
     'commerce_avatax_delete_tax_line_items' => array(
       'label' => t('Delete Avatax line items'),
       'group' => t('Commerce Avatax'),
       'parameter' => $parameter,
+      'wrapped' => TRUE,
     ),
     'commerce_avatax_commit_transaction' => array(
       'label' => t('Commit a SalesOrder transaction'),
@@ -46,6 +48,4 @@ function commerce_avatax_rules_action_info() {
       ),
     ),
   );
-
-  return $actions;
 }

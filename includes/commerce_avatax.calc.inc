@@ -7,8 +7,8 @@
 /**
  * Prepares the transaction request array to be sent to AvaTax.
  *
- * @param object $order
- *   The order object.
+ * @param EntityDrupalWrapper $order_wrapper
+ *    The wrapped order entity.
  * @param string $transaction_type
  *   The transaction type (e.g SalesOrder|SalesInvoice).
  * @param bool $commit
@@ -17,9 +17,7 @@
  * @return array|bool
  *   Returns the request body array to be sent, FALSE in case of failure.
  */
-function commerce_avatax_create_transaction($order, $transaction_type = 'SalesOrder', $commit = FALSE) {
-  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
-
+function commerce_avatax_create_transaction($order_wrapper, $transaction_type = 'SalesOrder', $commit = FALSE) {
   // Return FALSE in case there are no line items.
   if ($order_wrapper->commerce_line_items->count() === 0) {
     return FALSE;
@@ -31,12 +29,12 @@ function commerce_avatax_create_transaction($order, $transaction_type = 'SalesOr
     'type' => $transaction_type,
     'companyCode' => $company_code,
     'date' => format_date(REQUEST_TIME, 'custom', 'c'),
-    'code' => 'DC-' . $order->order_id,
-    'customerCode' => _commerce_avatax_transaction_get_customer_code($order),
+    'code' => 'DC-' . $order_wrapper->getIdentifier(),
+    'customerCode' => _commerce_avatax_transaction_get_customer_code($order_wrapper),
     'currencyCode' => $order_wrapper->commerce_order_total->currency_code->value(),
     'addresses' => array(
       'shipFrom' => _commerce_avatax_transaction_get_ship_from(),
-      'shipTo' => _commerce_avatax_transaction_get_ship_to($order),
+      'shipTo' => _commerce_avatax_transaction_get_ship_to($order_wrapper),
     ),
   );
 
@@ -45,7 +43,7 @@ function commerce_avatax_create_transaction($order, $transaction_type = 'SalesOr
   }
 
   // For non anonymous orders, send the exemption code if it exists.
-  if ($order->uid > 0) {
+  if ($order_wrapper->uid->value() > 0) {
     // Check the Exemptions status.
     if (variable_get(COMMERCE_AVATAX_VAR_PREFIX . 'exemptions_status', FALSE)) {
       if (isset($order_wrapper->owner->{COMMERCE_AVATAX_EXEMPTION_CODE_FIELD})) {
@@ -78,6 +76,7 @@ function commerce_avatax_create_transaction($order, $transaction_type = 'SalesOr
   }
 
   _commerce_avatax_transaction_add_lines($request_body, $order_wrapper->commerce_line_items, $tax_included);
+  $order = $order_wrapper->value();
   drupal_alter('commerce_avatax_create_transaction', $request_body, $order);
 
   return $request_body;
@@ -224,16 +223,15 @@ function _commerce_avatax_transaction_add_lines(&$request_body, $line_items, $ta
 /**
  * Helper function used to determine the customerCode sent.
  */
-function _commerce_avatax_transaction_get_customer_code($order) {
-  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
-
+function _commerce_avatax_transaction_get_customer_code($order_wrapper) {
   // Get User name or e-mail address.
-  if ($order->uid === 0) {
-    if ($order->mail == '') {
+  if ($order_wrapper->uid->value() === 0) {
+    $mail = $order_wrapper->mail->value();
+    if ($mail == '') {
       $customer_code = 'administrator';
     }
     else {
-      $user_email = $order->mail;
+      $user_email = $mail;
       $customer_code = commerce_avatax_email_to_username($user_email);
     }
   }
@@ -261,13 +259,12 @@ function _commerce_avatax_transaction_get_ship_from() {
 /**
  * Returns the shipTo address for a transaction.
  */
-function _commerce_avatax_transaction_get_ship_to($order) {
+function _commerce_avatax_transaction_get_ship_to($order_wrapper) {
   $ship_to = array();
-  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
   $customer_profile_field = commerce_avatax_get_customer_profile_field();
 
   // Retrieve the address from the configured customer profile type.
-  if (!empty($customer_profile_field) && !empty($order->{$customer_profile_field})) {
+  if (!empty($customer_profile_field) && isset($order_wrapper->{$customer_profile_field})) {
     if (isset($order_wrapper->{$customer_profile_field}->commerce_customer_address)) {
       $address = $order_wrapper->{$customer_profile_field}->commerce_customer_address->value();
 
