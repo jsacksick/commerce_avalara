@@ -137,7 +137,7 @@ function commerce_avatax_order_admin_form_access($order) {
   $company_code = commerce_avatax_company_code();
   // Skip tax calculation if the option is disabled, or if the company code
   // is empty & skip cart orders.
-  if (!variable_get(COMMERCE_AVATAX_VAR_PREFIX . 'tax_calculation_enabled', TRUE) || empty($company_code) || commerce_cart_order_is_cart($order)) {
+  if (!commerce_avatax_tax_calculation_enabled() || empty($company_code) || commerce_cart_order_is_cart($order)) {
     return FALSE;
   }
 
@@ -174,6 +174,13 @@ function commerce_avatax_company_code() {
  */
 function commerce_avatax_license_key() {
   return variable_get(COMMERCE_AVATAX_VAR_PREFIX . commerce_avatax_api_mode() . '_' . COMMERCE_AVATAX_LICENSE_KEY, '');
+}
+
+/**
+ * Determines if the tax calculation is enabled.
+ */
+function commerce_avatax_tax_calculation_enabled() {
+  return variable_get(COMMERCE_AVATAX_VAR_PREFIX . 'tax_calculation_enabled', TRUE);
 }
 
 /**
@@ -378,8 +385,8 @@ function commerce_avatax_commerce_cart_order_refresh($order_wrapper) {
 function commerce_avatax_calculate_tax($order_wrapper) {
   // Skip tax calculation if the option is disabled, or if the company code
   // is empty.
-  if (!variable_get(COMMERCE_AVATAX_VAR_PREFIX . 'tax_calculation_enabled', TRUE)) {
-    return;
+  if (!commerce_avatax_tax_calculation_enabled()) {
+    return FALSE;
   }
   $company_code = commerce_avatax_company_code();
 
@@ -523,7 +530,7 @@ function commerce_avatax_set_existing_line_item_price(EntityDrupalWrapper $order
  * @return object
  *   The newly created tax line item wrapper.
  */
-function commerce_avatax_add_line_item($order_wrapper, $tax_price, $tax_type) {
+function commerce_avatax_add_line_item(EntityDrupalWrapper $order_wrapper, $tax_price, $tax_type) {
   // Create the new line item.
   $line_item = entity_create('commerce_line_item', array(
     'type' => 'avatax',
@@ -555,7 +562,7 @@ function commerce_avatax_add_line_item($order_wrapper, $tax_price, $tax_type) {
  * @param string $tax_type
  *   A string determining the price component to add.
  */
-function commerce_avatax_set_price_component($line_item_wrapper,  $tax_price, $tax_type) {
+function commerce_avatax_set_price_component($line_item_wrapper, $tax_price, $tax_type) {
   $types_mapping = array(
     'sales_tax' => array(
       'line_item_label' => t('Sales Tax'),
@@ -591,28 +598,10 @@ function commerce_avatax_set_price_component($line_item_wrapper,  $tax_price, $t
   $line_item_wrapper->commerce_unit_price->data = commerce_price_component_add($base_price, $price_component, $tax_price, TRUE);
 }
 
-
-/**
- * Adds an Avatax line item to an order, and saves the order.
- *
- * @param object $line_item
- *   An unsaved avatax line item that should be added to the order.
- * @param object $order
- *   The order to add the avatax line item to.
- */
-function commerce_avatax_add_tax_line_item($line_item, $order) {
-  // Save the incoming line item now so we get its ID.
-  commerce_line_item_save($line_item);
-
-  // Add it to the order's line item reference value.
-  $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
-  $order_wrapper->commerce_line_items[] = $line_item;
-}
-
 /**
  * Checks if the Avatax service needs to be called for this address.
  */
-function commerce_avatax_check_address($order_wrapper, $field_name) {
+function commerce_avatax_check_address(EntityDrupalWrapper $order_wrapper, $field_name) {
   // Skip the check if the customer profile field is empty.
   if (!isset($order_wrapper->{$field_name}) || is_null($order_wrapper->{$field_name}->value())) {
     return FALSE;
@@ -644,31 +633,28 @@ function commerce_avatax_check_address($order_wrapper, $field_name) {
  * @param $skip_save
  *   Boolean indicating whether or not to skip saving the order in this function.
  */
-function commerce_avatax_delete_tax_line_items($order_wrapper, $skip_save = FALSE) {
-  // When deleting more than one line item, metadata_wrapper will give problems
-  // if deleting while looping through the line items. So first remove from
-  // order and then delete the line items.
-  $line_item_ids = array();
+function commerce_avatax_delete_tax_line_items(EntityDrupalWrapper $order_wrapper, $skip_save = FALSE) {
+  $line_items_to_delete = array();
 
   foreach ($order_wrapper->commerce_line_items as $delta => $line_item_wrapper) {
-    // If this line item is a Sales tax line item...
-    if ($line_item_wrapper->type->value() == 'avatax') {
-      // Store its ID for later deletion and remove the reference from the line
-      // item reference field.
-      $line_item_ids[] = $line_item_wrapper->line_item_id->value();
-      $order_wrapper->commerce_line_items->offsetUnset($delta);
+    // Skip non Avatax line items.
+    if (!$line_item_wrapper->value() || $line_item_wrapper->getBundle() != 'avatax') {
+      continue;
     }
+    $line_items_to_delete[] = $line_item_wrapper->line_item_id->value();
+    $order_wrapper->commerce_line_items->offsetUnset($delta);
   }
 
-  // If we found any Avatax line items.
-  if (!empty($line_item_ids)) {
+  // If we found line items to delete.
+  if (!empty($line_items_to_delete)) {
     // First save the order to update the line item reference field value.
     if (!$skip_save) {
       $order_wrapper->save();
     }
 
-    // Then delete the line items.
-    commerce_line_item_delete_multiple($line_item_ids);
+    // Delete the line items on shutdown, to prevent the line item controller
+    // delete method to fire and save the order for us.
+    drupal_register_shutdown_function('commerce_line_item_delete_multiple', $line_items_to_delete);
   }
 }
 
@@ -695,55 +681,57 @@ function commerce_avatax_email_to_username($user_email) {
  */
 function commerce_avatax_commerce_payment_order_paid_in_full($order) {
   $company_code = commerce_avatax_company_code();
-  // Skip the transaction creation
-  if (!variable_get(COMMERCE_AVATAX_VAR_PREFIX . 'tax_calculation_enabled', TRUE) || empty($company_code)) {
+  // Skip the transaction creation.
+  if (!commerce_avatax_tax_calculation_enabled() || empty($company_code) || empty($order->data['commerce_avatax']['request'])) {
     return;
   }
-  // Check if we have an AvaTax tax line item present on this order.
+  // Check if there's an AvaTax line item present on this order.
   $order_wrapper = entity_metadata_wrapper('commerce_order', $order);
   $tax_line_item = FALSE;
 
   foreach ($order_wrapper->commerce_line_items as $delta => $line_item_wrapper) {
-    // If this line item is a Sales tax line item...
-    if ($line_item_wrapper->type->value() == 'avatax') {
-      $tax_line_item = $line_item_wrapper->value();
-      break;
+    if (!$line_item_wrapper->value() || $line_item_wrapper->getBundle() != 'avatax') {
+      continue;
     }
+    $tax_line_item = $line_item_wrapper->value();
+    break;
+  }
+
+  // If the tax line item could not be found, stop here.
+  if (!$tax_line_item) {
+    return;
   }
 
   // Commit the transaction when "Disable document committing" is unchecked.
-  if ($tax_line_item && !empty($order->data['commerce_avatax']['request'])) {
-    module_load_include('inc', 'commerce_avatax', 'includes/commerce_avatax.calc');
+  module_load_include('inc', 'commerce_avatax', 'includes/commerce_avatax.calc');
 
-    if (empty($company_code) || !$avatax_object = commerce_avatax_object()) {
-      drupal_set_message(t("The Avatax module is not properly configured, please configure the company code."), 'error');
-      return;
-    }
-    // Reuse the stored AvaTax transaction from the line item's data array.
-    $request_body = $order->data['commerce_avatax']['request'];
-    // Check if the transaction needs to be committed.
-    $commit = !variable_get(COMMERCE_AVATAX_VAR_PREFIX . 'disable_document_committing', FALSE);
+  if (empty($company_code) || !$avatax_object = commerce_avatax_object()) {
+    drupal_set_message(t("The Avatax module is not properly configured, please configure the company code."), 'error');
+    return;
+  }
+  // Reuse the stored AvaTax transaction from the line item's data array.
+  $request_body = $order->data['commerce_avatax']['request'];
+  // Check if the transaction needs to be committed.
+  $commit = !variable_get(COMMERCE_AVATAX_VAR_PREFIX . 'disable_document_committing', FALSE);
 
-    // Update the transaction type if it needs to be committed.
-    if ($commit) {
-      $request_body['type'] = 'SalesInvoice';
-    }
+  // Update the transaction type if it needs to be committed.
+  if ($commit) {
+    $request_body['type'] = 'SalesInvoice';
+  }
 
-    $request_body['commit'] = $commit;
-    // Perform a new
-    $response = $avatax_object->transactionsCreate($request_body);
+  $request_body['commit'] = $commit;
+  $response = $avatax_object->transactionsCreate($request_body);
 
-    // Parse the result request.
-    if ($response['success'] && isset($response['result']['id'])) {
-      $order->data['commerce_avatax'] = array(
-        'transaction_id' => $response['result']['id'],
-        'transaction_code' => $response['result']['code'],
-        // Stores the company code, it might change overtime.
-        'company_code' => $company_code,
-        'request' => $request_body,
-        'response' => $response,
-      );
-    }
+  // Parse the result request.
+  if ($response['success'] && isset($response['result']['id'])) {
+    $order->data['commerce_avatax'] = array(
+      'transaction_id' => $response['result']['id'],
+      'transaction_code' => $response['result']['code'],
+      // Stores the company code, it might change overtime.
+      'company_code' => $company_code,
+      'request' => $request_body,
+      'response' => $response,
+    );
   }
 }
 
