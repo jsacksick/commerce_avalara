@@ -9,34 +9,27 @@
  * Implements hook_rules_action_info().
  */
 function commerce_avatax_rules_action_info() {
-  $parameter = array(
-    'commerce_order' => array(
-      'type' => 'commerce_order',
-      'label' => t('Commerce Order'),
-    ),
-  );
   return array(
     'commerce_avatax_calculate_tax' => array(
       'label' => t('Calculate sales tax for an order'),
       'group' => t('Commerce Avatax'),
-      'parameter' => $parameter,
-      'wrapped' => TRUE,
+      'parameter' => _commerce_avatax_rules_order_parameter_info(TRUE),
     ),
     'commerce_avatax_delete_tax_line_items' => array(
       'label' => t('Delete Avatax line items'),
       'group' => t('Commerce Avatax'),
-      'parameter' => $parameter,
-      'wrapped' => TRUE,
+      'parameter' => _commerce_avatax_rules_order_parameter_info(TRUE),
+
     ),
     'commerce_avatax_commit_transaction' => array(
       'label' => t('Commit a SalesOrder transaction'),
       'group' => t('Commerce AvaTax'),
-      'parameter' => $parameter,
+      'parameter' => _commerce_avatax_rules_order_parameter_info(),
     ),
     'commerce_avatax_void_transaction' => array(
       'label' => t('Void a transaction in Avatax'),
       'group' => t('Commerce AvaTax'),
-      'parameter' => $parameter + array(
+      'parameter' => _commerce_avatax_rules_order_parameter_info() + array(
         'code' => array(
           'type' => 'token',
           'label' => t('Void code'),
@@ -48,4 +41,22 @@ function commerce_avatax_rules_action_info() {
       ),
     ),
   );
+}
+
+/**
+ * Helper function that returns the order parameter.
+ */
+function _commerce_avatax_rules_order_parameter_info($wrapped = FALSE) {
+  $parameter = array(
+    'commerce_order' => array(
+      'type' => 'commerce_order',
+      'label' => t('Commerce Order'),
+    ),
+  );
+
+  if ($wrapped) {
+    $parameter['commerce_order']['wrapped'] = TRUE;
+  }
+
+  return $parameter;
 }
