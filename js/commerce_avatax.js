@@ -6,7 +6,7 @@
 (function($) {
 
   var checkoutFormSelector = 'form[id^=commerce-checkout]';
-  var continueButtonsSelector = 'input.checkout-continue';
+  var continueButtonsSelector = 'input.checkout-continue, button.checkout-continue';
   var suggestionInputSelector = 'input[name="use_suggested_address"]';
   // Make sure our objects are defined.
   Drupal.CommerceAvaTax = Drupal.CommerceAvaTax || {};
